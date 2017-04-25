@@ -112,7 +112,7 @@ public final class LDAPredictUDAF extends AbstractGenericUDAFResolver {
         private PrimitiveObjectInspector lambdaOI;
 
         // Hyperparameters
-        private int topic;
+        private int topics;
         private float alpha;
         private double delta;
 
@@ -134,7 +134,7 @@ public final class LDAPredictUDAF extends AbstractGenericUDAFResolver {
 
         protected Options getOptions() {
             Options opts = new Options();
-            opts.addOption("k", "topic", true, "The number of topics [required]");
+            opts.addOption("k", "topics", true, "The number of topics [required]");
             opts.addOption("alpha", true, "The hyperparameter for theta [default: 1/k]");
             opts.addOption("delta", true,
                 "Check convergence in the expectation step [default: 1E-5]");
@@ -176,19 +176,19 @@ public final class LDAPredictUDAF extends AbstractGenericUDAFResolver {
             CommandLine cl = null;
 
             if (argOIs.length != 5) {
-                throw new UDFArgumentException("At least 1 option `-topic` MUST be specified");
+                throw new UDFArgumentException("At least 1 option `-topics` MUST be specified");
             }
 
             String rawArgs = HiveUtils.getConstString(argOIs[4]);
             cl = parseOptions(rawArgs);
 
-            this.topic = Primitives.parseInt(cl.getOptionValue("topic"), 0);
-            if (topic < 1) {
+            this.topics = Primitives.parseInt(cl.getOptionValue("topics"), 0);
+            if (topics < 1) {
                 throw new UDFArgumentException(
-                    "A positive integer MUST be set to an option `-topic`: " + topic);
+                    "A positive integer MUST be set to an option `-topics`: " + topics);
             }
 
-            this.alpha = Primitives.parseFloat(cl.getOptionValue("alpha"), 1.f / topic);
+            this.alpha = Primitives.parseFloat(cl.getOptionValue("alpha"), 1.f / topics);
             this.delta = Primitives.parseDouble(cl.getOptionValue("delta"), 1E-5d);
 
             return cl;
@@ -211,7 +211,7 @@ public final class LDAPredictUDAF extends AbstractGenericUDAFResolver {
                 this.internalMergeOI = soi;
                 this.wcListField = soi.getStructFieldRef("wcList");
                 this.lambdaMapField = soi.getStructFieldRef("lambdaMap");
-                this.topicOptionField = soi.getStructFieldRef("topic");
+                this.topicOptionField = soi.getStructFieldRef("topics");
                 this.alphaOptionField = soi.getStructFieldRef("alpha");
                 this.deltaOptionField = soi.getStructFieldRef("delta");
                 this.wcListElemOI = PrimitiveObjectInspectorFactory.javaStringObjectInspector;
@@ -253,7 +253,7 @@ public final class LDAPredictUDAF extends AbstractGenericUDAFResolver {
                 PrimitiveObjectInspectorFactory.javaStringObjectInspector,
                 ObjectInspectorFactory.getStandardListObjectInspector(PrimitiveObjectInspectorFactory.javaFloatObjectInspector)));
 
-            fieldNames.add("topic");
+            fieldNames.add("topics");
             fieldOIs.add(PrimitiveObjectInspectorFactory.writableIntObjectInspector);
 
             fieldNames.add("alpha");
@@ -278,7 +278,7 @@ public final class LDAPredictUDAF extends AbstractGenericUDAFResolver {
                 throws HiveException {
             OnlineLDAPredictAggregationBuffer myAggr = (OnlineLDAPredictAggregationBuffer) agg;
             myAggr.reset();
-            myAggr.setOptions(topic, alpha, delta);
+            myAggr.setOptions(topics, alpha, delta);
         }
 
         @Override
@@ -359,7 +359,7 @@ public final class LDAPredictUDAF extends AbstractGenericUDAFResolver {
 
             // restore options from partial result
             Object topicObj = internalMergeOI.getStructFieldData(partial, topicOptionField);
-            this.topic = PrimitiveObjectInspectorFactory.writableIntObjectInspector.get(topicObj);
+            this.topics = PrimitiveObjectInspectorFactory.writableIntObjectInspector.get(topicObj);
 
             Object alphaObj = internalMergeOI.getStructFieldData(partial, alphaOptionField);
             this.alpha = PrimitiveObjectInspectorFactory.writableFloatObjectInspector.get(alphaObj);
@@ -368,7 +368,7 @@ public final class LDAPredictUDAF extends AbstractGenericUDAFResolver {
             this.delta = PrimitiveObjectInspectorFactory.writableDoubleObjectInspector.get(deltaObj);
 
             OnlineLDAPredictAggregationBuffer myAggr = (OnlineLDAPredictAggregationBuffer) agg;
-            myAggr.setOptions(topic, alpha, delta);
+            myAggr.setOptions(topics, alpha, delta);
             myAggr.merge(wcList, lambdaMap);
         }
 

@@ -60,7 +60,7 @@ public class PLSAUDTF extends UDTFWithOptions {
     private static final Log logger = LogFactory.getLog(PLSAUDTF.class);
 
     // Options
-    protected int topic;
+    protected int topics;
     protected float alpha;
     protected int iterations;
     protected double delta;
@@ -82,8 +82,8 @@ public class PLSAUDTF extends UDTFWithOptions {
     protected ByteBuffer inputBuf;
 
     public PLSAUDTF() {
-        this.topic = 10;
-        this.alpha = 1.f / topic;
+        this.topics = 10;
+        this.alpha = 1.f / topics;
         this.iterations = 10;
         this.delta = 1E-3d;
         this.eps = 1E-1d;
@@ -93,7 +93,7 @@ public class PLSAUDTF extends UDTFWithOptions {
     @Override
     protected Options getOptions() {
         Options opts = new Options();
-        opts.addOption("k", "topic", true, "The number of topics [default: 10]");
+        opts.addOption("k", "topics", true, "The number of topics [default: 10]");
         opts.addOption("alpha", true, "The hyperparameter for P(w|z) update [default: 0.5]");
         opts.addOption("iter", "iterations", true, "The maximum number of iterations [default: 10]");
         opts.addOption("delta", true, "Check convergence in the expectation step [default: 1E-3]");
@@ -111,7 +111,7 @@ public class PLSAUDTF extends UDTFWithOptions {
         if (argOIs.length >= 2) {
             String rawArgs = HiveUtils.getConstString(argOIs[1]);
             cl = parseOptions(rawArgs);
-            this.topic = Primitives.parseInt(cl.getOptionValue("topic"), 10);
+            this.topics = Primitives.parseInt(cl.getOptionValue("topics"), 10);
             this.alpha = Primitives.parseFloat(cl.getOptionValue("alpha"), 0.5f);
             this.iterations = Primitives.parseInt(cl.getOptionValue("iterations"), 10);
             if (iterations < 1) {
@@ -156,7 +156,7 @@ public class PLSAUDTF extends UDTFWithOptions {
     }
 
     protected void initModel() {
-        this.model = new IncrementalPLSAModel(topic, alpha, delta);
+        this.model = new IncrementalPLSAModel(topics, alpha, delta);
     }
 
     @Override
@@ -493,7 +493,7 @@ public class PLSAUDTF extends UDTFWithOptions {
         forwardObjs[1] = word;
         forwardObjs[2] = score;
 
-        for (int k = 0; k < topic; k++) {
+        for (int k = 0; k < topics; k++) {
             topicIdx.set(k);
 
             final SortedMap<Float, List<String>> topicWords = model.getTopicWords(k);
@@ -507,7 +507,7 @@ public class PLSAUDTF extends UDTFWithOptions {
             }
         }
 
-        logger.info("Forwarded topic words each of " + topic + " topics");
+        logger.info("Forwarded topic words each of " + topics + " topics");
     }
 
     /*

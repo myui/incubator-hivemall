@@ -37,8 +37,6 @@ import javax.annotation.Nonnull;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentException;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentLengthException;
@@ -65,7 +63,6 @@ import org.apache.hadoop.io.IntWritable;
         value = "_FUNC_(string word, float value, int label, float prob[, const string options])"
                 + " - Returns a list which consists of <int label, float prob>")
 public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
-    private static final Log logger = LogFactory.getLog(PLSAPredictUDAF.class);
 
     @Override
     public Evaluator getEvaluator(TypeInfo[] typeInfo) throws SemanticException {
@@ -114,7 +111,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
         private PrimitiveObjectInspector probOI;
 
         // Hyperparameters
-        private int topic;
+        private int topics;
         private float alpha;
         private double delta;
 
@@ -136,7 +133,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
 
         protected Options getOptions() {
             Options opts = new Options();
-            opts.addOption("k", "topic", true, "The number of topics [required]");
+            opts.addOption("k", "topics", true, "The number of topics [required]");
             opts.addOption("alpha", true, "The hyperparameter for P(w|z) update [default: 0.5]");
             opts.addOption("delta", true,
                 "Check convergence in the expectation step [default: 1E-5]");
@@ -178,16 +175,16 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
             CommandLine cl = null;
 
             if (argOIs.length != 5) {
-                throw new UDFArgumentException("At least 1 option `-topic` MUST be specified");
+                throw new UDFArgumentException("At least 1 option `-topics` MUST be specified");
             }
 
             String rawArgs = HiveUtils.getConstString(argOIs[4]);
             cl = parseOptions(rawArgs);
 
-            this.topic = Primitives.parseInt(cl.getOptionValue("topic"), 0);
-            if (topic < 1) {
+            this.topics = Primitives.parseInt(cl.getOptionValue("topics"), 0);
+            if (topics < 1) {
                 throw new UDFArgumentException(
-                    "A positive integer MUST be set to an option `-topic`: " + topic);
+                    "A positive integer MUST be set to an option `-topics`: " + topics);
             }
 
             this.alpha = Primitives.parseFloat(cl.getOptionValue("alpha"), 0.5f);
@@ -213,7 +210,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
                 this.internalMergeOI = soi;
                 this.wcListField = soi.getStructFieldRef("wcList");
                 this.probMapField = soi.getStructFieldRef("probMap");
-                this.topicOptionField = soi.getStructFieldRef("topic");
+                this.topicOptionField = soi.getStructFieldRef("topics");
                 this.alphaOptionField = soi.getStructFieldRef("alpha");
                 this.deltaOptionField = soi.getStructFieldRef("delta");
                 this.wcListElemOI = PrimitiveObjectInspectorFactory.javaStringObjectInspector;
@@ -255,7 +252,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
                 PrimitiveObjectInspectorFactory.javaStringObjectInspector,
                 ObjectInspectorFactory.getStandardListObjectInspector(PrimitiveObjectInspectorFactory.javaFloatObjectInspector)));
 
-            fieldNames.add("topic");
+            fieldNames.add("topics");
             fieldOIs.add(PrimitiveObjectInspectorFactory.writableIntObjectInspector);
 
             fieldNames.add("alpha");
@@ -267,6 +264,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
             return ObjectInspectorFactory.getStandardStructObjectInspector(fieldNames, fieldOIs);
         }
 
+        @SuppressWarnings("deprecation")
         @Override
         public AggregationBuffer getNewAggregationBuffer() throws HiveException {
             AggregationBuffer myAggr = new PLSAPredictAggregationBuffer();
@@ -279,7 +277,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
                 throws HiveException {
             PLSAPredictAggregationBuffer myAggr = (PLSAPredictAggregationBuffer) agg;
             myAggr.reset();
-            myAggr.setOptions(topic, alpha, delta);
+            myAggr.setOptions(topics, alpha, delta);
         }
 
         @Override
@@ -359,7 +357,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
 
             // restore options from partial result
             Object topicObj = internalMergeOI.getStructFieldData(partial, topicOptionField);
-            this.topic = PrimitiveObjectInspectorFactory.writableIntObjectInspector.get(topicObj);
+            this.topics = PrimitiveObjectInspectorFactory.writableIntObjectInspector.get(topicObj);
 
             Object alphaObj = internalMergeOI.getStructFieldData(partial, alphaOptionField);
             this.alpha = PrimitiveObjectInspectorFactory.writableFloatObjectInspector.get(alphaObj);
@@ -368,7 +366,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
             this.delta = PrimitiveObjectInspectorFactory.writableDoubleObjectInspector.get(deltaObj);
 
             PLSAPredictAggregationBuffer myAggr = (PLSAPredictAggregationBuffer) agg;
-            myAggr.setOptions(topic, alpha, delta);
+            myAggr.setOptions(topics, alpha, delta);
             myAggr.merge(wcList, probMap);
         }
 

@@ -100,7 +100,7 @@ public class LDAPredictUDAFTest {
                 PrimitiveObjectInspectorFactory.getPrimitiveJavaObjectInspector(
                         PrimitiveObjectInspector.PrimitiveCategory.FLOAT),
                 ObjectInspectorUtils.getConstantObjectInspector(
-                        PrimitiveObjectInspectorFactory.javaStringObjectInspector, "-topic 2")};
+                        PrimitiveObjectInspectorFactory.javaStringObjectInspector, "-topics 2")};
 
         evaluator = udaf.getEvaluator(new SimpleGenericUDAFParameterInfo(inputOIs, false, false));
 

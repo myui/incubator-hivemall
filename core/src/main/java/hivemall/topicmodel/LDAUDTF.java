@@ -63,7 +63,7 @@ public class LDAUDTF extends UDTFWithOptions {
     private static final Log logger = LogFactory.getLog(LDAUDTF.class);
 
     // Options
-    protected int topic;
+    protected int topics;
     protected float alpha;
     protected float eta;
     protected long numDocs;
@@ -93,9 +93,9 @@ public class LDAUDTF extends UDTFWithOptions {
     protected ByteBuffer inputBuf;
 
     public LDAUDTF() {
-        this.topic = 10;
-        this.alpha = 1.f / topic;
-        this.eta = 1.f / topic;
+        this.topics = 10;
+        this.alpha = 1.f / topics;
+        this.eta = 1.f / topics;
         this.numDocs = -1L;
         this.tau0 = 64.d;
         this.kappa = 0.7;
@@ -108,7 +108,7 @@ public class LDAUDTF extends UDTFWithOptions {
     @Override
     protected Options getOptions() {
         Options opts = new Options();
-        opts.addOption("k", "topic", true, "The number of topics [default: 10]");
+        opts.addOption("k", "topics", true, "The number of topics [default: 10]");
         opts.addOption("alpha", true, "The hyperparameter for theta [default: 1/k]");
         opts.addOption("eta", true, "The hyperparameter for beta [default: 1/k]");
         opts.addOption("d", "num_docs", true, "The total number of documents [default: auto]");
@@ -131,9 +131,9 @@ public class LDAUDTF extends UDTFWithOptions {
         if (argOIs.length >= 2) {
             String rawArgs = HiveUtils.getConstString(argOIs[1]);
             cl = parseOptions(rawArgs);
-            this.topic = Primitives.parseInt(cl.getOptionValue("topic"), 10);
-            this.alpha = Primitives.parseFloat(cl.getOptionValue("alpha"), 1.f / topic);
-            this.eta = Primitives.parseFloat(cl.getOptionValue("eta"), 1.f / topic);
+            this.topics = Primitives.parseInt(cl.getOptionValue("topics"), 10);
+            this.alpha = Primitives.parseFloat(cl.getOptionValue("alpha"), 1.f / topics);
+            this.eta = Primitives.parseFloat(cl.getOptionValue("eta"), 1.f / topics);
             this.numDocs = Primitives.parseLong(cl.getOptionValue("num_docs"), -1L);
             this.tau0 = Primitives.parseDouble(cl.getOptionValue("tau0"), 64.d);
             if (tau0 <= 0.d) {
@@ -187,7 +187,7 @@ public class LDAUDTF extends UDTFWithOptions {
     }
 
     protected void initModel() {
-        this.model = new OnlineLDAModel(topic, alpha, eta, numDocs, tau0, kappa, delta);
+        this.model = new OnlineLDAModel(topics, alpha, eta, numDocs, tau0, kappa, delta);
     }
 
     @Override
@@ -527,7 +527,7 @@ public class LDAUDTF extends UDTFWithOptions {
         forwardObjs[1] = word;
         forwardObjs[2] = score;
 
-        for (int k = 0; k < topic; k++) {
+        for (int k = 0; k < topics; k++) {
             topicIdx.set(k);
 
             final SortedMap<Float, List<String>> topicWords = model.getTopicWords(k);
@@ -541,7 +541,7 @@ public class LDAUDTF extends UDTFWithOptions {
             }
         }
 
-        logger.info("Forwarded topic words each of " + topic + " topics");
+        logger.info("Forwarded topic words each of " + topics + " topics");
     }
 
     /*
