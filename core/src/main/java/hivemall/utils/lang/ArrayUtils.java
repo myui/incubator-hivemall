@@ -27,7 +27,6 @@ import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import hivemall.utils.math.MathUtils;
 import org.apache.commons.math3.distribution.GammaDistribution;
 
 public final class ArrayUtils {
