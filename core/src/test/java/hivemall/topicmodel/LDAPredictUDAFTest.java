@@ -117,7 +117,7 @@ public class LDAPredictUDAFTest {
                 ObjectInspectorFactory.getStandardListObjectInspector(
                         PrimitiveObjectInspectorFactory.javaFloatObjectInspector)));
 
-        fieldNames.add("topic");
+        fieldNames.add("topics");
         fieldOIs.add(PrimitiveObjectInspectorFactory.writableIntObjectInspector);
 
         fieldNames.add("alpha");
