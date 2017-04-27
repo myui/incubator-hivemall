@@ -59,7 +59,7 @@ with word_counts as (
     docid, word
 )
 select
-	train_plsa(feature, "-topic 2 -eps 0.00001 -iter 2048 -alpha 0.01") as (label, word, prob)
+	train_plsa(feature, "-topics 2 -eps 0.00001 -iter 2048 -alpha 0.01") as (label, word, prob)
 from (
   select docid, collect_set(f) as feature
   from word_counts
@@ -108,7 +108,7 @@ test as (
 topic as (
   select
     t.docid,
-    plsa_predict(t.word, t.value, m.label, m.prob, "-topic 2") as probabilities
+    plsa_predict(t.word, t.value, m.label, m.prob, "-topics 2") as probabilities
   from
     test t
     JOIN plsa_model m ON (t.word = m.word)
@@ -144,7 +144,7 @@ For the reasons that we mentioned above, we recommend you to first use LDA. Afte
 For training pLSA, we set a hyper-parameter `alpha` in the above example:
 
 ```sql
-SELECT train_plsa(feature, "-topic 2 -eps 0.00001 -iter 2048 -alpha 0.01") 
+SELECT train_plsa(feature, "-topics 2 -eps 0.00001 -iter 2048 -alpha 0.01") 
 ```
 
 This value controls **how much iterative model update is affected by the old results**.
