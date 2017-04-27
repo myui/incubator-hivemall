@@ -58,7 +58,11 @@ import org.apache.hadoop.mapred.Reporter;
         + " - Returns a relation consists of <int topic, string word, float score>")
 public class PLSAUDTF extends UDTFWithOptions {
     private static final Log logger = LogFactory.getLog(PLSAUDTF.class);
-
+    
+    public static final int DEFAULT_TOPICS = 10;
+    public static final float DEFAULT_ALPHA = 0.5f;
+    public static final double DEFAULT_DELTA = 1E-3d;
+    
     // Options
     protected int topics;
     protected float alpha;
@@ -82,10 +86,10 @@ public class PLSAUDTF extends UDTFWithOptions {
     protected ByteBuffer inputBuf;
 
     public PLSAUDTF() {
-        this.topics = 10;
-        this.alpha = 1.f / topics;
+        this.topics = DEFAULT_TOPICS;
+        this.alpha = DEFAULT_ALPHA;
         this.iterations = 10;
-        this.delta = 1E-3d;
+        this.delta = DEFAULT_DELTA;
         this.eps = 1E-1d;
         this.miniBatchSize = 128;
     }
@@ -111,14 +115,14 @@ public class PLSAUDTF extends UDTFWithOptions {
         if (argOIs.length >= 2) {
             String rawArgs = HiveUtils.getConstString(argOIs[1]);
             cl = parseOptions(rawArgs);
-            this.topics = Primitives.parseInt(cl.getOptionValue("topics"), 10);
-            this.alpha = Primitives.parseFloat(cl.getOptionValue("alpha"), 0.5f);
+            this.topics = Primitives.parseInt(cl.getOptionValue("topics"), DEFAULT_TOPICS);
+            this.alpha = Primitives.parseFloat(cl.getOptionValue("alpha"), DEFAULT_ALPHA);
             this.iterations = Primitives.parseInt(cl.getOptionValue("iterations"), 10);
             if (iterations < 1) {
                 throw new UDFArgumentException(
                     "'-iterations' must be greater than or equals to 1: " + iterations);
             }
-            this.delta = Primitives.parseDouble(cl.getOptionValue("delta"), 1E-3d);
+            this.delta = Primitives.parseDouble(cl.getOptionValue("delta"), DEFAULT_DELTA);
             this.eps = Primitives.parseDouble(cl.getOptionValue("epsilon"), 1E-1d);
             this.miniBatchSize = Primitives.parseInt(cl.getOptionValue("mini_batch_size"), 128);
         }

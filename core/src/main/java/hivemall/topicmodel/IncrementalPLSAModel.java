@@ -296,12 +296,10 @@ public final class IncrementalPLSAModel {
     public void setProbability(@Nonnull final String label, @Nonnegative final int z,
             final float prob) {
         float[] prob_label = _p_zw.get(label);
-
         if (prob_label == null) {
             prob_label = ArrayUtils.newRandomFloatArray(_K, _rnd);
             _p_zw.put(label, prob_label);
         }
-
         prob_label[z] = prob;
 
         // ensure \sum_w P(w|z) = 1

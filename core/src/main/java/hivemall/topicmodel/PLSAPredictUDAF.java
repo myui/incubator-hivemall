@@ -33,6 +33,7 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.HelpFormatter;
@@ -133,7 +134,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
 
         protected Options getOptions() {
             Options opts = new Options();
-            opts.addOption("k", "topics", true, "The number of topics [required]");
+            opts.addOption("k", "topics", true, "The number of topics [default: 10]");
             opts.addOption("alpha", true, "The hyperparameter for P(w|z) update [default: 0.5]");
             opts.addOption("delta", true,
                 "Check convergence in the expectation step [default: 1E-5]");
@@ -171,24 +172,23 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
             return cl;
         }
 
+        @Nullable
         protected CommandLine processOptions(ObjectInspector[] argOIs) throws UDFArgumentException {
-            CommandLine cl = null;
-
             if (argOIs.length != 5) {
-                throw new UDFArgumentException("At least 1 option `-topics` MUST be specified");
+                return null;
             }
 
             String rawArgs = HiveUtils.getConstString(argOIs[4]);
-            cl = parseOptions(rawArgs);
+            CommandLine cl = parseOptions(rawArgs);
 
-            this.topics = Primitives.parseInt(cl.getOptionValue("topics"), 0);
+            this.topics = Primitives.parseInt(cl.getOptionValue("topics"), PLSAUDTF.DEFAULT_TOPICS);
             if (topics < 1) {
                 throw new UDFArgumentException(
                     "A positive integer MUST be set to an option `-topics`: " + topics);
             }
 
-            this.alpha = Primitives.parseFloat(cl.getOptionValue("alpha"), 0.5f);
-            this.delta = Primitives.parseDouble(cl.getOptionValue("delta"), 1E-3d);
+            this.alpha = Primitives.parseFloat(cl.getOptionValue("alpha"), PLSAUDTF.DEFAULT_ALPHA);
+            this.delta = Primitives.parseDouble(cl.getOptionValue("delta"), PLSAUDTF.DEFAULT_DELTA);
 
             return cl;
         }
@@ -291,9 +291,9 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
             }
 
             String word = PrimitiveObjectInspectorUtils.getString(parameters[0], wordOI);
-            float value = HiveUtils.getFloat(parameters[1], valueOI);
+            float value = PrimitiveObjectInspectorUtils.getFloat(parameters[1], valueOI);
             int label = PrimitiveObjectInspectorUtils.getInt(parameters[2], labelOI);
-            float prob = HiveUtils.getFloat(parameters[3], probOI);
+            float prob = PrimitiveObjectInspectorUtils.getFloat(parameters[3], probOI);
 
             myAggr.iterate(word, value, label, prob);
         }
@@ -423,15 +423,15 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
             wcList.add(word + ":" + value);
 
             // for an unforeseen word, initialize its probs w/ -1s
-            if (!probMap.containsKey(word)) {
-                List<Float> probEmpty_word = new ArrayList<Float>(Collections.nCopies(topic, -1.f));
-                probMap.put(word, probEmpty_word);
+            List<Float> prob_word = probMap.get(word);
+            
+            if (prob_word == null) {
+                prob_word = new ArrayList<Float>(Collections.nCopies(topic, -1.f));
+                probMap.put(word, prob_word);
             }
 
             // set the given prob value
-            List<Float> prob_word = probMap.get(word);
             prob_word.set(label, prob);
-            probMap.put(word, prob_word);
         }
 
         void merge(List<String> o_wcList, Map<String, List<Float>> o_probMap) {
@@ -456,17 +456,19 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
         }
 
         float[] get() {
-            IncrementalPLSAModel model = new IncrementalPLSAModel(topic, alpha, delta);
+            final IncrementalPLSAModel model = new IncrementalPLSAModel(topic, alpha, delta);
 
-            for (String word : probMap.keySet()) {
-                List<Float> prob_word = probMap.get(word);
-                for (int k = 0; k < topic; k++) {
-                    if (prob_word.get(k) != -1.f) {
-                        model.setProbability(word, k, prob_word.get(k));
+            for (Map.Entry<String, List<Float>> e : probMap.entrySet()) {
+                final String word = e.getKey();
+                final List<Float> prob_word = e.getValue();
+                for (int k = 0; k < topic; k++) {                    
+                    float prob_k = prob_word.get(k).floatValue();                    
+                    if (prob_k != -1.f) {
+                        model.setProbability(word, k, prob_k);
                     }
                 }
             }
-
+            
             String[] wcArray = wcList.toArray(new String[wcList.size()]);
             return model.getTopicDistribution(wcArray);
         }
