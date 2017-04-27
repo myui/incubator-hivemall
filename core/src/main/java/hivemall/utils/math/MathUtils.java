@@ -410,7 +410,7 @@ public final class MathUtils {
 
     @Nonnull
     public static float[] l1normalize(@Nonnull final float[] arr) {
-        float sum = 0.f;
+        double sum = 0.d;
         for (int i = 0; i < arr.length; i++) {
             sum += Math.abs(arr[i]);
         }

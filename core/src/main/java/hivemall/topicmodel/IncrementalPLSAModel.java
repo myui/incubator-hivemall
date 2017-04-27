@@ -18,12 +18,13 @@
  */
 package hivemall.topicmodel;
 
+import static hivemall.utils.lang.ArrayUtils.newRandomFloatArray;
+import static hivemall.utils.math.MathUtils.l1normalize;
 import hivemall.model.FeatureValue;
-import hivemall.utils.lang.ArrayUtils;
 import hivemall.utils.math.MathUtils;
 
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -56,12 +57,12 @@ public final class IncrementalPLSAModel {
     private final Random _rnd;
 
     // optimized in the E step
-    private List<Map<String, float[]>> _p_dwz; // P(z|d,w) probability of topics for each document-label pair
+    private List<Map<String, float[]>> _p_dwz; // P(z|d,w) probability of topics for each document-word (i.e., instance-feature) pair
 
     // optimized in the M step
     @Nonnull
     private List<float[]> _p_dz; // P(z|d) probability of topics for documents
-    private Map<String, float[]> _p_zw; // P(w|z) probability of labels for each topic
+    private Map<String, float[]> _p_zw; // P(w|z) probability of words for each topic
 
     @Nonnull
     private final List<Map<String, Float>> _miniBatchDocs;
@@ -122,9 +123,9 @@ public final class IncrementalPLSAModel {
                     continue;
                 }
                 FeatureValue.parseFeatureAsString(fv, probe);
-                String label = probe.getFeatureAsString();
+                String word = probe.getFeatureAsString();
                 float value = probe.getValueAsFloat();
-                doc.put(label, Float.valueOf(value));
+                doc.put(word, Float.valueOf(value));
             }
 
             docs.add(doc);
@@ -137,27 +138,26 @@ public final class IncrementalPLSAModel {
 
         for (int d = 0; d < _miniBatchSize; d++) {
             // init P(z|d)
-            float[] p_dz_d = MathUtils.l1normalize(ArrayUtils.newRandomFloatArray(_K, _rnd));
+            float[] p_dz_d = l1normalize(newRandomFloatArray(_K, _rnd));
             p_dz.add(p_dz_d);
 
             final Map<String, float[]> p_dwz_d = new HashMap<String, float[]>();
             p_dwz.add(p_dwz_d);
 
-            for (final String label : _miniBatchDocs.get(d).keySet()) {
+            for (final String w : _miniBatchDocs.get(d).keySet()) {
                 // init P(z|d,w)
-                float[] p_dwz_dw = MathUtils.l1normalize(ArrayUtils.newRandomFloatArray(_K, _rnd));
-                p_dwz_d.put(label, p_dwz_dw);
+                float[] p_dwz_dw = l1normalize(newRandomFloatArray(_K, _rnd));
+                p_dwz_d.put(w, p_dwz_dw);
 
                 // insert new labels to P(w|z)
-                if (!_p_zw.containsKey(label)) {
-                    float[] p_zw_w = ArrayUtils.newRandomFloatArray(_K, _rnd);
-                    _p_zw.put(label, p_zw_w);
+                if (!_p_zw.containsKey(w)) {
+                    _p_zw.put(w, newRandomFloatArray(_K, _rnd));
                 }
             }
         }
 
         // ensure \sum_w P(w|z) = 1
-        final float[] sums = new float[_K];
+        final double[] sums = new double[_K];
         for (float[] p_zw_w : _p_zw.values()) {
             MathUtils.add(p_zw_w, sums, _K);
         }
@@ -176,13 +176,13 @@ public final class IncrementalPLSAModel {
         final float[] p_dz_d = _p_dz.get(d);
 
         // update P(z|d,w) = P(z|d) * P(w|z)
-        for (final String label : _miniBatchDocs.get(d).keySet()) {
-            final float[] p_dwz_dw = p_dwz_d.get(label);
-            final float[] p_zw_w = _p_zw.get(label);
+        for (final String w : _miniBatchDocs.get(d).keySet()) {
+            final float[] p_dwz_dw = p_dwz_d.get(w);
+            final float[] p_zw_w = _p_zw.get(w);
             for (int z = 0; z < _K; z++) {
                 p_dwz_dw[z] = p_dz_d[z] * p_zw_w[z];
             }
-            MathUtils.l1normalize(p_dwz_dw);
+            l1normalize(p_dwz_dw);
         }
     }
 
@@ -200,18 +200,18 @@ public final class IncrementalPLSAModel {
                 p_dz_d[z] += n * p_dwz_dw[z];
             }
         }
-        MathUtils.l1normalize(p_dz_d);
+        l1normalize(p_dz_d);
 
         // update P(w|z) = n(d,w) * P(z|d,w) + alpha * P(w|z)^(n-1)
-        final float[] sums = new float[_K];
+        final double[] sums = new double[_K];
         for (Map.Entry<String, float[]> e : _p_zw.entrySet()) {
-            String label = e.getKey();
+            String w = e.getKey();
             final float[] p_zw_w = e.getValue();
 
-            Float label_value = doc.get(label);
-            if (label_value != null) { // all words in the document
-                final float n = label_value.floatValue();
-                final float[] p_dwz_dw = p_dwz_d.get(label);
+            Float w_value = doc.get(w);
+            if (w_value != null) { // all words in the document
+                final float n = w_value.floatValue();
+                final float[] p_dwz_dw = p_dwz_d.get(w);
 
                 for (int z = 0; z < _K; z++) {
                     p_zw_w[z] = n * p_dwz_dw[z] + _alpha * p_zw_w[z];
@@ -228,11 +228,12 @@ public final class IncrementalPLSAModel {
         }
     }
 
-    private boolean isPdzConverged(@Nonnegative final int d,
-            @Nonnull final List<float[]> pPrev_dz, @Nonnull final List<float[]> p_dz) {
-        double diff = 0.d;
+    private boolean isPdzConverged(@Nonnegative final int d, @Nonnull final List<float[]> pPrev_dz,
+            @Nonnull final List<float[]> p_dz) {
         final float[] pPrev_dz_d = pPrev_dz.get(d);
         final float[] p_dz_d = p_dz.get(d);
+
+        double diff = 0.d;
         for (int z = 0; z < _K; z++) {
             diff += Math.abs(pPrev_dz_d[z] - p_dz_d[z]);
         }
@@ -246,17 +247,17 @@ public final class IncrementalPLSAModel {
         for (int d = 0; d < _miniBatchSize; d++) {
             final float[] p_dz_d = _p_dz.get(d);
             for (Map.Entry<String, Float> e : _miniBatchDocs.get(d).entrySet()) {
-                String label = e.getKey();
-                float value = e.getValue().floatValue();
+                String w = e.getKey();
+                float w_value = e.getValue().floatValue();
 
+                final float[] p_zw_w = _p_zw.get(w);
                 double p_dw = 0.d;
-                final float[] p_zw_w = _p_zw.get(label);
                 for (int z = 0; z < _K; z++) {
                     p_dw += (double) p_zw_w[z] * p_dz_d[z];
                 }
 
-                numer += value * Math.log(p_dw);
-                denom += value;
+                numer += w_value * Math.log(p_dw);
+                denom += w_value;
             }
         }
 
@@ -265,19 +266,19 @@ public final class IncrementalPLSAModel {
 
     @Nonnull
     public SortedMap<Float, List<String>> getTopicWords(@Nonnegative final int z) {
-        SortedMap<Float, List<String>> res = new TreeMap<Float, List<String>>(
+        final SortedMap<Float, List<String>> res = new TreeMap<Float, List<String>>(
             Collections.reverseOrder());
 
         for (Map.Entry<String, float[]> e : _p_zw.entrySet()) {
-            final String label = e.getKey();
+            final String w = e.getKey();
             final float prob = e.getValue()[z];
 
-            List<String> labels = res.get(prob);
-            if (labels == null) {
-                labels = new ArrayList<String>();
-                res.put(prob, labels);
+            List<String> words = res.get(prob);
+            if (words == null) {
+                words = new ArrayList<String>();
+                res.put(prob, words);
             }
-            labels.add(label);
+            words.add(w);
         }
 
         return res;
@@ -289,21 +290,20 @@ public final class IncrementalPLSAModel {
         return _p_dz.get(0);
     }
 
-    public float getProbability(@Nonnull final String label, @Nonnegative final int z) {
-        return _p_zw.get(label)[z];
+    public float getProbability(@Nonnull final String w, @Nonnegative final int z) {
+        return _p_zw.get(w)[z];
     }
 
-    public void setProbability(@Nonnull final String label, @Nonnegative final int z,
-            final float prob) {
-        float[] prob_label = _p_zw.get(label);
+    public void setProbability(@Nonnull final String w, @Nonnegative final int z, final float prob) {
+        float[] prob_label = _p_zw.get(w);
         if (prob_label == null) {
-            prob_label = ArrayUtils.newRandomFloatArray(_K, _rnd);
-            _p_zw.put(label, prob_label);
+            prob_label = newRandomFloatArray(_K, _rnd);
+            _p_zw.put(w, prob_label);
         }
         prob_label[z] = prob;
 
         // ensure \sum_w P(w|z) = 1
-        final float[] sums = new float[_K];
+        final double[] sums = new double[_K];
         for (float[] p_zw_w : _p_zw.values()) {
             MathUtils.add(p_zw_w, sums, _K);
         }

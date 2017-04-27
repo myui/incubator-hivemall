@@ -50,10 +50,10 @@ import org.apache.hadoop.hive.serde2.io.DoubleWritable;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
-import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StandardListObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StandardMapObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.StructField;
+import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorUtils;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
@@ -309,7 +309,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
             Object[] partialResult = new Object[5];
             partialResult[0] = myAggr.wcList;
             partialResult[1] = myAggr.probMap;
-            partialResult[2] = new IntWritable(myAggr.topic);
+            partialResult[2] = new IntWritable(myAggr.topics);
             partialResult[3] = new FloatWritable(myAggr.alpha);
             partialResult[4] = new DoubleWritable(myAggr.delta);
 
@@ -385,8 +385,8 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
             List<Object[]> result = new ArrayList<Object[]>();
             for (Map.Entry<Float, Integer> e : sortedDistr.entrySet()) {
                 Object[] struct = new Object[2];
-                struct[0] = new IntWritable(e.getValue()); // label
-                struct[1] = new FloatWritable(e.getKey()); // probability
+                struct[0] = new IntWritable(e.getValue().intValue()); // label
+                struct[1] = new FloatWritable(e.getKey().floatValue()); // probability
                 result.add(struct);
             }
             return result;
@@ -400,7 +400,7 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
         private List<String> wcList;
         private Map<String, List<Float>> probMap;
 
-        private int topic;
+        private int topics;
         private float alpha;
         private double delta;
 
@@ -408,8 +408,8 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
             super();
         }
 
-        void setOptions(int topic, float alpha, double delta) {
-            this.topic = topic;
+        void setOptions(int topics, float alpha, double delta) {
+            this.topics = topics;
             this.alpha = alpha;
             this.delta = delta;
         }
@@ -419,35 +419,38 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
             this.probMap = new HashMap<String, List<Float>>();
         }
 
-        void iterate(String word, float value, int label, float prob) {
+        void iterate(@Nonnull final String word, final float value, final int label,
+                final float prob) {
             wcList.add(word + ":" + value);
 
             // for an unforeseen word, initialize its probs w/ -1s
             List<Float> prob_word = probMap.get(word);
-            
+
             if (prob_word == null) {
-                prob_word = new ArrayList<Float>(Collections.nCopies(topic, -1.f));
+                prob_word = new ArrayList<Float>(Collections.nCopies(topics, -1.f));
                 probMap.put(word, prob_word);
             }
 
             // set the given prob value
-            prob_word.set(label, prob);
+            prob_word.set(label, Float.valueOf(prob));
         }
 
-        void merge(List<String> o_wcList, Map<String, List<Float>> o_probMap) {
+        void merge(@Nonnull final List<String> o_wcList,
+                @Nonnull final Map<String, List<Float>> o_probMap) {
             wcList.addAll(o_wcList);
 
             for (Map.Entry<String, List<Float>> e : o_probMap.entrySet()) {
                 String o_word = e.getKey();
                 List<Float> o_prob_word = e.getValue();
 
-                if (!probMap.containsKey(o_word)) { // for an unforeseen word
+                final List<Float> prob_word = probMap.get(o_word);
+                if (prob_word == null) {// for a partially observed word
                     probMap.put(o_word, o_prob_word);
-                } else { // for a partially observed word
-                    List<Float> prob_word = probMap.get(o_word);
-                    for (int k = 0; k < topic; k++) {
-                        if (o_prob_word.get(k) != -1.f) { // not default value
-                            prob_word.set(k, o_prob_word.get(k)); // set the partial prob value
+                } else { // for an unforeseen word
+                    for (int k = 0; k < topics; k++) {
+                        final float prob_k = o_prob_word.get(k).floatValue();
+                        if (prob_k != -1.f) { // not default value
+                            prob_word.set(k, prob_k); // set the partial prob value
                         }
                     }
                     probMap.put(o_word, prob_word);
@@ -456,19 +459,19 @@ public final class PLSAPredictUDAF extends AbstractGenericUDAFResolver {
         }
 
         float[] get() {
-            final IncrementalPLSAModel model = new IncrementalPLSAModel(topic, alpha, delta);
+            final IncrementalPLSAModel model = new IncrementalPLSAModel(topics, alpha, delta);
 
             for (Map.Entry<String, List<Float>> e : probMap.entrySet()) {
                 final String word = e.getKey();
                 final List<Float> prob_word = e.getValue();
-                for (int k = 0; k < topic; k++) {                    
-                    float prob_k = prob_word.get(k).floatValue();                    
+                for (int k = 0; k < topics; k++) {
+                    final float prob_k = prob_word.get(k).floatValue();
                     if (prob_k != -1.f) {
                         model.setProbability(word, k, prob_k);
                     }
                 }
             }
-            
+
             String[] wcArray = wcList.toArray(new String[wcList.size()]);
             return model.getTopicDistribution(wcArray);
         }
