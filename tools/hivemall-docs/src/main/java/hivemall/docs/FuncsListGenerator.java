@@ -18,18 +18,11 @@
  */
 package hivemall.docs;
 
+import static org.apache.commons.lang.StringEscapeUtils.escapeHtml;
+
 import hivemall.docs.utils.MarkdownUtils;
 import hivemall.utils.lang.StringUtils;
 
-import org.apache.maven.plugin.AbstractMojo;
-import org.apache.maven.execution.MavenSession;
-import org.apache.maven.plugin.MojoExecutionException;
-import org.apache.maven.plugins.annotations.Mojo;
-import org.apache.hadoop.hive.ql.exec.Description;
-import org.apache.maven.plugins.annotations.Parameter;
-import org.reflections.Reflections;
-
-import javax.annotation.Nonnull;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -39,15 +32,23 @@ import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.LinkedHashMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.apache.commons.lang.StringEscapeUtils.escapeHtml;
+import javax.annotation.Nonnull;
+
+import org.apache.hadoop.hive.ql.exec.Description;
+import org.apache.maven.execution.MavenSession;
+import org.apache.maven.plugin.AbstractMojo;
+import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
+import org.reflections.Reflections;
 
 /**
  * Generate a list of UDFs for documentation.
@@ -83,6 +84,8 @@ public class FuncsListGenerator extends AbstractMojo {
         genericFuncsHeaders.put("# Matrix", Collections.singletonList("hivemall.tools.matrix"));
         genericFuncsHeaders.put("# Text processing",
             Collections.singletonList("hivemall.tools.text"));
+        genericFuncsHeaders.put("# Timeseries",
+            Collections.singletonList("hivemall.tools.timeseries"));
         genericFuncsHeaders.put("# Others", Collections.singletonList("hivemall.tools"));
     }
 
