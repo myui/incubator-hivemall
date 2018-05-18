@@ -18,6 +18,8 @@
 # under the License.
 #
 
+set -ev
+
 if [ "$HIVEMALL_HOME" = "" ]; then
     if [ -e ../bin/${0##*/} ]; then
 	HIVEMALL_HOME=".."
@@ -39,7 +41,8 @@ mvn clean install -pl tools/hivemall-docs
 
 # Generate docs
 
-mvn org.apache.hivemall:hivemall-docs:generate-funcs-list
+mvn clean process-classes -pl core,nlp,xgboost
+mvn org.apache.hivemall:hivemall-docs:generate-funcs-list -X
 
 # Run HTTP server on localhost:040
 

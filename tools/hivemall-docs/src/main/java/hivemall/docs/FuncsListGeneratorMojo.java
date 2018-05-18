@@ -21,7 +21,6 @@ package hivemall.docs;
 import static org.apache.commons.lang.StringEscapeUtils.escapeHtml;
 
 import hivemall.docs.utils.MarkdownUtils;
-import hivemall.utils.lang.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -29,6 +28,10 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -43,11 +46,16 @@ import java.util.regex.Pattern;
 import javax.annotation.Nonnull;
 
 import org.apache.hadoop.hive.ql.exec.Description;
+import org.apache.maven.artifact.DependencyResolutionRequiredException;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
+import org.apache.maven.plugins.annotations.Component;
+import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.plugins.annotations.ResolutionScope;
+import org.apache.maven.project.MavenProject;
 import org.reflections.Reflections;
 
 /**
@@ -56,8 +64,13 @@ import org.reflections.Reflections;
  * @link https://hivemall.incubator.apache.org/userguide/misc/generic_funcs.html
  * @link https://hivemall.incubator.apache.org/userguide/misc/funcs.html
  */
-@Mojo(name = "generate-funcs-list")
-public class FuncsListGenerator extends AbstractMojo {
+@Mojo(name = "generate-funcs-list", defaultPhase = LifecyclePhase.PROCESS_CLASSES,
+        requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME,
+        configurator = "include-project-dependencies")
+public class FuncsListGeneratorMojo extends AbstractMojo {
+
+    @Component
+    private MavenProject project;
 
     @Parameter(defaultValue = "${basedir}", readonly = true)
     private File basedir;
@@ -147,12 +160,44 @@ public class FuncsListGenerator extends AbstractMojo {
             return;
         }
 
+        loadClasses();
+
         generate(new File(basedir, pathToGenericFuncs),
             "This page describes a list of useful Hivemall generic functions. See also a [list of machine-learning-related functions](./funcs.md).",
             genericFuncsHeaders);
         generate(new File(basedir, pathToFuncs),
             "This page describes a list of Hivemall functions. See also a [list of generic Hivemall functions](./generic_funcs.md) for more general-purpose functions such as array and map UDFs.",
             funcsHeaders);
+    }
+
+    private void loadClasses() throws MojoExecutionException {
+        try {
+            final List<URL> urls = new ArrayList<URL>();
+            getLog().info("compile cp: " + project.getCompileClasspathElements());
+            resolveURLs(project.getCompileClasspathElements(), urls);
+            getLog().info("runtime cp: " + project.getRuntimeClasspathElements());
+            resolveURLs(project.getRuntimeClasspathElements(), urls);
+
+            URLClassLoader cl = new URLClassLoader(urls.toArray(new URL[urls.size()]),
+                FuncsListGeneratorMojo.class.getClassLoader());
+            Thread.currentThread().setContextClassLoader(cl);
+        } catch (DependencyResolutionRequiredException e) {
+            new MojoExecutionException("Dependency resolution failed", e);
+        }
+    }
+
+    @Nonnull
+    private static void resolveURLs(@Nonnull final List<String> elements,
+            @Nonnull final List<URL> urls) throws MojoExecutionException {
+        for (String element : elements) {
+            try {
+                URL url = new File(element).toURI().toURL();
+                urls.add(url);
+            } catch (MalformedURLException e) {
+                throw new MojoExecutionException("Unable to access project dependency: " + element,
+                    e);
+            }
+        }
     }
 
     private boolean isReactorRootProject() {
@@ -210,7 +255,7 @@ public class FuncsListGenerator extends AbstractMojo {
             Set<String> List = packages.get(packageName);
             List.add(sb.toString());
 
-            StringUtils.clear(sb);
+            sb.setLength(0);
         }
 
         PrintWriter writer;
@@ -245,6 +290,11 @@ public class FuncsListGenerator extends AbstractMojo {
             writer.println(e.getKey() + "\n");
             List<String> packageNames = e.getValue();
             for (String packageName : packageNames) {
+                if (!packages.containsKey(packageName)) {
+                    writer.close();
+                    throw new MojoExecutionException(
+                        "Failed to find package in the classpath: " + packageName);
+                }
                 for (String desc : packages.get(packageName)) {
                     writer.println(desc);
                 }
