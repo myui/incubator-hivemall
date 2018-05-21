@@ -32,6 +32,7 @@
 
 	<properties>
 		<main.basedir>${project.parent.basedir}</main.basedir>
+		<hive.version>0.13.0</hive.version>
 	</properties>
 
 	<dependencies>

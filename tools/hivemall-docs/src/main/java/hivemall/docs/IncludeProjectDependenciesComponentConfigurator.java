@@ -32,6 +32,7 @@ import org.codehaus.plexus.component.configurator.AbstractComponentConfigurator;
 import org.codehaus.plexus.component.configurator.ComponentConfigurationException;
 import org.codehaus.plexus.component.configurator.ConfigurationListener;
 import org.codehaus.plexus.component.configurator.converters.composite.ObjectWithFieldsConverter;
+import org.codehaus.plexus.component.configurator.converters.special.ClassRealmConverter;
 import org.codehaus.plexus.component.configurator.expression.ExpressionEvaluationException;
 import org.codehaus.plexus.component.configurator.expression.ExpressionEvaluator;
 import org.codehaus.plexus.configuration.PlexusConfiguration;
@@ -40,6 +41,7 @@ import org.codehaus.plexus.configuration.PlexusConfiguration;
  * A custom ComponentConfigurator which adds the project's runtime classpath elements to the MOJO
  * classloader
  */
+@SuppressWarnings("deprecation")
 @Component(role = org.codehaus.plexus.component.configurator.ComponentConfigurator.class,
         hint = "include-project-dependencies")
 public class IncludeProjectDependenciesComponentConfigurator extends AbstractComponentConfigurator {
@@ -49,6 +51,8 @@ public class IncludeProjectDependenciesComponentConfigurator extends AbstractCom
             final ConfigurationListener listener) throws ComponentConfigurationException {
         addProjectDependenciesToClassRealm(expressionEvaluator, containerRealm);
 
+        converterLookup.registerConverter(new ClassRealmConverter(containerRealm));
+
         ObjectWithFieldsConverter converter = new ObjectWithFieldsConverter();
 
         converter.processConfiguration(converterLookup, component, containerRealm.getClassLoader(),
@@ -56,8 +60,9 @@ public class IncludeProjectDependenciesComponentConfigurator extends AbstractCom
     }
 
     @SuppressWarnings("unchecked")
-    private static void addProjectDependenciesToClassRealm(final ExpressionEvaluator expressionEvaluator,
-            final ClassRealm containerRealm) throws ComponentConfigurationException {
+    private static void addProjectDependenciesToClassRealm(
+            final ExpressionEvaluator expressionEvaluator, final ClassRealm containerRealm)
+            throws ComponentConfigurationException {
         final List<String> runtimeClasspathElements;
         try {
             // noinspection unchecked
@@ -78,6 +83,7 @@ public class IncludeProjectDependenciesComponentConfigurator extends AbstractCom
     @Nonnull
     private static URL[] buildURLs(@Nonnull final List<String> runtimeClasspathElements)
             throws ComponentConfigurationException {
+        // Add the projects classes and dependencies
         final List<URL> urls = new ArrayList<>(runtimeClasspathElements.size());
         for (String element : runtimeClasspathElements) {
             try {

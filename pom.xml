@@ -612,6 +612,11 @@
 						</execution>
 					</executions>
 				</plugin>
+				<plugin>
+					<groupId>org.apache.hivemall</groupId>
+					<artifactId>hivemall-docs</artifactId>
+					<version>${project.version}</version>
+				</plugin>
 			</plugins>
 		</pluginManagement>
 
