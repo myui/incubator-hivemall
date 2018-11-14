@@ -38,7 +38,6 @@ import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
-import org.apache.commons.logging.Log;
 import org.apache.commons.math3.linear.Array2DRowRealMatrix;
 import org.apache.commons.math3.linear.ArrayRealVector;
 import org.apache.commons.math3.linear.DecompositionSolver;
@@ -163,7 +162,7 @@ public class CofactorModel {
             @Nonnegative final float lambdaTheta, @Nonnegative final float lambdaBeta,
             @Nonnegative final float lambdaGamma, final float globalBias,
             @Nullable CofactorizationUDTF.ValidationMetric validationMetric,
-            @Nonnegative final int numValPerRecord, @Nonnull final Log log) {
+            @Nonnegative final int numValPerRecord) {
 
         // rank init scheme is gaussian
         // https://github.com/dawenl/cofactor/blob/master/src/cofacto.py#L98

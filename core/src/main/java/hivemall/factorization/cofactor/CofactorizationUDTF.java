@@ -24,7 +24,6 @@ import hivemall.factorization.cofactor.CofactorModel.RankInitScheme;
 import hivemall.fm.Feature;
 import hivemall.utils.hadoop.HiveUtils;
 import hivemall.utils.lang.NumberUtils;
-import hivemall.utils.lang.Primitives;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -64,27 +63,7 @@ import org.apache.hadoop.mapred.Reporter;
 public final class CofactorizationUDTF extends UDTFWithOptions {
     private static final Log LOG = LogFactory.getLog(CofactorizationUDTF.class);
 
-    // Option variables
-    // The number of latent factors
-    private int factor;
-    // The scaling hyperparameter for zero entries in the rank matrix
-    private float c0;
-    // The scaling hyperparameter for non-zero entries in the rank matrix
-    private float c1;
-    // The initial mean rating
-    private float globalBias;
-    // Whether update (and return) the mean rating or not
-    private boolean updateGlobalBias;
-    // The number of iterations
-    private int maxIters;
-    // Whether to use bias clause
-    private boolean useBiasClause;
-    // Whether to use normalization
-    private boolean useL2Norm;
-    // regularization hyperparameters
-    private float lambdaTheta;
-    private float lambdaBeta;
-    private float lambdaGamma;
+    private CofactorHyperParameters params;
 
     // validation metric
     private ValidationMetric validationMetric;
@@ -97,7 +76,6 @@ public final class CofactorizationUDTF extends UDTFWithOptions {
 
     // Variable managing status of learning
     private ConversionState validationState;
-    private int numValPerRecord;
 
     // Input OIs and Context
     private PrimitiveObjectInspector userOI;
@@ -117,7 +95,6 @@ public final class CofactorizationUDTF extends UDTFWithOptions {
 
     // validation
     private Random rand;
-    private double validationRatio;
     private List<String> validationUsers;
     private List<String> validationItems;
 
@@ -135,7 +112,7 @@ public final class CofactorizationUDTF extends UDTFWithOptions {
             this.validationSamples = new ArrayList<>();
         }
 
-        void add(TrainingSample sample) {
+        void add(@Nonnull TrainingSample sample) {
             if (sample.isValidation) {
                 validationSamples.add(sample);
             } else {
@@ -218,126 +195,25 @@ public final class CofactorizationUDTF extends UDTFWithOptions {
 
     @Override
     protected Options getOptions() {
-        Options opts = new Options();
-        opts.addOption("k", "factor", true, "The number of latent factor [default: 10] "
-                + " Note this is alias for `factors` option.");
-        opts.addOption("f", "factors", true, "The number of latent factor [default: 10]");
-        opts.addOption("lt", "lambda_theta", true,
-            "The theta regularization factor [default: 1e-5]");
-        opts.addOption("lb", "lambda_beta", true, "The beta regularization factor [default: 1e-5]");
-        opts.addOption("lg", "lambda_gamma", true,
-            "The gamma regularization factor [default: 1.0]");
-        opts.addOption("c0", "c0", true,
-            "The scaling hyperparameter for zero entries in the rank matrix [default: 0.1]");
-        opts.addOption("c1", "c1", true,
-            "The scaling hyperparameter for non-zero entries in the rank matrix [default: 1.0]");
-        opts.addOption("gb", "global_bias", true, "The global bias [default: 0.0]");
-        opts.addOption("update_gb", "update_global_bias", true,
-            "Whether update (and return) the global bias or not [default: false]");
-        opts.addOption("rankinit", true,
-            "Initialization strategy of rank matrix [random, gaussian] (default: gaussian)");
-        opts.addOption("maxval", "max_init_value", true,
-            "The maximum initial value in the rank matrix [default: 1.0]");
-        opts.addOption("min_init_stddev", true,
-            "The minimum standard deviation of initial rank matrix [default: 0.01]");
-        opts.addOption("iters", "iterations", true, "The number of iterations [default: 1]");
-        opts.addOption("iter", true,
-            "The number of iterations [default: 1] Alias for `-iterations`");
-        opts.addOption("max_iters", "max_iters", true, "The number of iterations [default: 1]");
-        opts.addOption("disable_bias", "no_bias", false, "Turn off bias clause");
-        // normalization
-        opts.addOption("disable_norm", "disable_l2norm", false,
-            "Disable instance-wise L2 normalization");
-        // validation
-        opts.addOption("disable_cv", "disable_cvtest", false,
-            "Whether to disable convergence check [default: enabled]");
-        opts.addOption("cv_rate", "convergence_rate", true,
-            "Threshold to determine convergence [default: 0.005]");
-        opts.addOption("val_metric", "validation_metric", true,
-            "Metric to use for validation ['auc', 'objective']");
-        opts.addOption("val_ratio", "validation_ratio", true,
-            "Proportion of examples to use as validation data [default: 0.125]");
-        opts.addOption("num_val", "num_validation_examples_per_record", true,
-            "Number of validation examples to use per record [default: 10]");
-        return opts;
+        return CofactorHyperParameters.getOptions();
     }
 
     @Override
     protected CommandLine processOptions(ObjectInspector[] argOIs) throws UDFArgumentException {
         CommandLine cl = null;
-        String rankInitOpt = "gaussian";
-        float maxInitValue = 1.f;
-        double initStdDev = 0.01d;
-        boolean convergenceCheck = true;
-        double convergenceRate = 0.005d;
-        String validationMetricOpt = "auc";
-        this.c0 = 0.1f;
-        this.c1 = 1.0f;
-        this.lambdaTheta = 1e-5f;
-        this.lambdaBeta = 1e-5f;
-        this.lambdaGamma = 1.0f;
-        this.globalBias = 0.f;
-        this.maxIters = 1;
-        this.factor = 10;
-        this.numValPerRecord = 10;
-        this.validationRatio = 0.125;
 
+        final CofactorHyperParameters p = new CofactorHyperParameters();
+        this.params = p;
         if (argOIs.length >= 3) {
             String rawArgs = HiveUtils.getConstString(argOIs[3]);
             cl = parseOptions(rawArgs);
-            if (cl.hasOption("factors")) {
-                this.factor = Primitives.parseInt(cl.getOptionValue("factors"), factor);
-            } else {
-                this.factor = Primitives.parseInt(cl.getOptionValue("factor"), factor);
-            }
-            this.lambdaTheta =
-                    Primitives.parseFloat(cl.getOptionValue("lambda_theta"), lambdaTheta);
-            this.lambdaBeta = Primitives.parseFloat(cl.getOptionValue("lambda_beta"), lambdaBeta);
-            this.lambdaGamma =
-                    Primitives.parseFloat(cl.getOptionValue("lambda_gamma"), lambdaGamma);
-
-            this.c0 = Primitives.parseFloat(cl.getOptionValue("c0"), c0);
-            this.c1 = Primitives.parseFloat(cl.getOptionValue("c1"), c1);
-
-            this.globalBias = Primitives.parseFloat(cl.getOptionValue("global_bias"), globalBias);
-            this.updateGlobalBias = cl.hasOption("update_global_bias");
-
-            rankInitOpt = cl.getOptionValue("rankinit", rankInitOpt);
-            maxInitValue = Primitives.parseFloat(cl.getOptionValue("max_init_value"), maxInitValue);
-            initStdDev = Primitives.parseDouble(cl.getOptionValue("min_init_stddev"), initStdDev);
-
-            if (cl.hasOption("iter")) {
-                this.maxIters = Primitives.parseInt(cl.getOptionValue("iter"), maxIters);
-            } else {
-                this.maxIters = Primitives.parseInt(cl.getOptionValue("max_iters"), maxIters);
-            }
-            if (maxIters < 1) {
-                throw new UDFArgumentException(
-                    "'-max_iters' must be greater than or equal to 1: " + maxIters);
-            }
-
-            convergenceCheck = !cl.hasOption("disable_cvtest");
-            convergenceRate = Primitives.parseDouble(cl.getOptionValue("cv_rate"), convergenceRate);
-            validationMetricOpt = cl.getOptionValue("validation_metric", validationMetricOpt);
-            this.numValPerRecord = Primitives.parseInt(
-                cl.getOptionValue("num_validation_examples_per_record"), numValPerRecord);
-            this.validationRatio = Primitives.parseDouble(cl.getOptionValue("validation_ratio"),
-                this.validationRatio);
-            if (this.validationRatio > 1 || this.validationRatio < 0) {
-                throw new UDFArgumentException("'-validation_ratio' must be between 0.0 and 1.0");
-            }
-            boolean noBias = cl.hasOption("no_bias");
-            this.useBiasClause = !noBias;
-            if (noBias && updateGlobalBias) {
-                throw new UDFArgumentException("Cannot set both `update_gb` and `no_bias` option");
-            }
-            this.useL2Norm = !cl.hasOption("disable_l2norm");
+            p.processOptions(cl);
         }
-        this.rankInit = RankInitScheme.resolve(rankInitOpt);
-        rankInit.setMaxInitValue(maxInitValue);
-        rankInit.setInitStdDev(initStdDev);
-        this.validationState = new ConversionState(convergenceCheck, convergenceRate);
-        this.validationMetric = ValidationMetric.resolve(validationMetricOpt);
+
+        this.rankInit = p.rankInit;
+        this.validationState = new ConversionState(p.convergenceCheck, p.convergenceRate);
+        this.validationMetric = ValidationMetric.resolve(p.validationMetricOpt);
+
         return cl;
     }
 
@@ -354,8 +230,9 @@ public final class CofactorizationUDTF extends UDTFWithOptions {
 
         processOptions(argOIs);
 
-        this.model = new CofactorModel(factor, rankInit, c0, c1, lambdaTheta, lambdaBeta,
-            lambdaGamma, globalBias, validationMetric, numValPerRecord, LOG);
+        final CofactorHyperParameters p = this.params;
+        this.model = new CofactorModel(p.factor, rankInit, p.c0, p.c1, p.lambdaTheta, p.lambdaBeta,
+            p.lambdaGamma, p.globalBias, validationMetric, p.numValPerRecord);
 
         userToItems = new HashMap<>();
         itemToUsers = new HashMap<>();
@@ -410,7 +287,7 @@ public final class CofactorizationUDTF extends UDTFWithOptions {
 
     private void recordSample(@Nonnull final String user, @Nonnull final String item) {
         // validation data
-        if (rand.nextDouble() < validationRatio) {
+        if (rand.nextDouble() < params.validationRatio) {
             addValidationSample(user, item);
         } else {
             // train
@@ -468,7 +345,7 @@ public final class CofactorizationUDTF extends UDTFWithOptions {
                 thetaTrainableCounter, thetaTotalCounter, betaTrainableCounter, betaTotalCounter);
 
 
-            for (int iteration = 0; iteration < maxIters; iteration++) {
+            for (int iteration = 0, maxIters = params.maxIters; iteration < maxIters; iteration++) {
                 // train the model on a full batch (i.e., all the data) using mini-batch updates
                 validationState.next();
                 reportProgress(reporter);
@@ -501,8 +378,8 @@ public final class CofactorizationUDTF extends UDTFWithOptions {
         }
 
         final Text id = new Text();
-        final FloatWritable[] theta = HiveUtils.newFloatArray(factor, 0.f);
-        final FloatWritable[] beta = HiveUtils.newFloatArray(factor, 0.f);
+        final FloatWritable[] theta = HiveUtils.newFloatArray(params.factor, 0.f);
+        final FloatWritable[] beta = HiveUtils.newFloatArray(params.factor, 0.f);
         final Object[] forwardObj = new Object[] {id, theta, null};
 
         int numUsersForwarded = 0, numItemsForwarded = 0;
@@ -528,7 +405,7 @@ public final class CofactorizationUDTF extends UDTFWithOptions {
     }
 
     private void copyTo(@Nonnull final double[] src, @Nonnull final FloatWritable[] dst) {
-        for (int k = 0, size = factor; k < size; k++) {
+        for (int k = 0, size = params.factor; k < size; k++) {
             dst[k].set((float) src[k]);
         }
     }
