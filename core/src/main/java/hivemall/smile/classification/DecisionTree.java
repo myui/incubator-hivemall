@@ -737,6 +737,7 @@ public final class DecisionTree implements Classifier<Vector> {
             } else if (_attributes[j] == AttributeType.NUMERIC) {
                 final int[] trueCount = new int[_k];
 
+                // for each column with it's value ascending order to find the best split feature/value
                 _order.eachNonNullInColumn(j, new VectorProcedure() {
                     double prevx = Double.NaN;
                     int prevy = -1;

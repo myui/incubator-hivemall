@@ -22,6 +22,8 @@ import hivemall.TestUtils;
 import hivemall.classifier.KernelExpansionPassiveAggressiveUDTF;
 import hivemall.utils.codec.Base91;
 import hivemall.utils.lang.mutable.MutableInt;
+import smile.data.AttributeDataset;
+import smile.data.parser.ArffParser;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -47,9 +49,6 @@ import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
 import org.junit.Assert;
 import org.junit.Test;
-
-import smile.data.AttributeDataset;
-import smile.data.parser.ArffParser;
 
 public class RandomForestClassifierUDTFTest {
 
@@ -401,6 +400,33 @@ public class RandomForestClassifierUDTFTest {
                     ObjectInspectorUtils.getConstantObjectInspector(
                         PrimitiveObjectInspectorFactory.javaStringObjectInspector, "-trees 49")},
             rows);
+    }
+
+    @Test
+    public void testSparseRandomForestClassifier() throws HiveException {
+        RandomForestClassifierUDTF udtf = new RandomForestClassifierUDTF();
+        udtf.initialize(new ObjectInspector[] {
+                ObjectInspectorFactory.getStandardListObjectInspector(
+                    PrimitiveObjectInspectorFactory.javaStringObjectInspector),
+                PrimitiveObjectInspectorFactory.javaIntObjectInspector});
+
+        udtf.process(new Object[] {new String[] {"1:1.0", "4:1.0", "7:1.0", "12:1.0"}, 1}); // 0
+        udtf.process(new Object[] {new String[] {"2:1.0", "4:1.0", "5:1.0", "11:1.0"}, 1}); // 1
+        udtf.process(new Object[] {
+                new String[] {"1:1.0", "4:1.0", "7:1.0", "113:1.0", "497:1.0", "635:1.0"}, 0}); // 2
+        udtf.process(new Object[] {
+                new String[] {"1:1.0", "4:1.0", "5:1.0", "7:1.0", "10:1.0", "14:1.0"}, 1}); // 3
+        udtf.process(new Object[] {new String[] {"1:1.0", "2:1.0", "4:1.0", "7:1.0", "8:1.0"}, 1}); // 4
+
+        udtf.setCollector(new Collector() {
+            @Override
+            public void collect(Object input) throws HiveException {
+                System.out.println();
+            }
+
+        });
+
+        udtf.close();
     }
 
     @Nonnull
