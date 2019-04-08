@@ -615,7 +615,8 @@ public final class DecisionTree implements Classifier<Vector> {
             final int[] samples =
                     _hasNumericType ? SmileExtUtils.bagsToSamples(bags, x.numRows()) : null;
             final int[] falseCount = new int[_k];
-            for (int varJ : variableIndex(x, bags)) {
+            final int[] sampledColumns = variableIndex(x, bags);
+            for (int varJ : sampledColumns) {
                 final Node split =
                         findBestSplit(numSamples, count, falseCount, impurity, varJ, samples);
                 if (split.splitScore > node.splitScore) {
@@ -749,7 +750,7 @@ public final class DecisionTree implements Classifier<Vector> {
                         }
 
                         final double x_ij = x.get(i, j, Double.NaN);
-                        if (Double.isNaN(x_ij)) {
+                        if (Double.isNaN(x_ij)) {// REVIEWME fill zero for sparse matrix?
                             return;
                         }
                         final int y_i = y[i];
