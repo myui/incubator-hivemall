@@ -20,9 +20,16 @@ package hivemall.utils.lang;
 
 import java.text.DecimalFormat;
 
+import javax.annotation.Nonnegative;
+
 public final class NumberUtils {
 
     private NumberUtils() {}
+
+    @Nonnegative
+    public static int diff(final int x, final int y) {
+        return Math.abs(x - y);
+    }
 
     public static int parseInt(String s) {
         int endIndex = s.length() - 1;

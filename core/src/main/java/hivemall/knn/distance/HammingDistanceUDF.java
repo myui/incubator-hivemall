@@ -18,10 +18,13 @@
  */
 package hivemall.knn.distance;
 
-import static hivemall.utils.hadoop.WritableUtils.val;
+import static hivemall.utils.lang.NumberUtils.diff;
 
 import java.math.BigInteger;
 import java.util.List;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.hive.ql.exec.UDF;
@@ -30,21 +33,42 @@ import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 
 @Description(name = "hamming_distance",
-        value = "_FUNC_(A, B [,int k]) - Returns Hamming distance between A and B")
+        value = "_FUNC_(A, B [,int k]) - Returns Hamming distance between A and B", extended = "")
 @UDFType(deterministic = true, stateful = false)
-public class HammingDistanceUDF extends UDF {
+public final class HammingDistanceUDF extends UDF {
+
+    public IntWritable evaluate(int a, int b) {
+        return new IntWritable(hammingDistance(a, b));
+    }
 
     public IntWritable evaluate(long a, long b) {
-        return val(hammingDistance(a, b));
+        return new IntWritable(hammingDistance(a, b));
     }
 
-    public IntWritable evaluate(String a, String b) {
-        BigInteger ai = new BigInteger(a);
-        BigInteger bi = new BigInteger(b);
-        return val(hammingDistance(ai, bi));
+    @Nullable
+    public IntWritable evaluate(@Nullable String a, @Nullable String b) {
+        if (a == null || b == null) {
+            return null;
+        }
+
+        int x = a.length();
+        int y = b.length();
+        final int min = Math.min(x, y);
+        int distance = diff(x, y); // padding
+        for (int i = 0; i < min; i++) {
+            if (a.charAt(i) != b.charAt(i)) {
+                distance++;
+            }
+        }
+        return new IntWritable(distance);
     }
 
-    public IntWritable evaluate(List<LongWritable> a, List<LongWritable> b) {
+    @Nullable
+    public IntWritable evaluate(@Nullable List<LongWritable> a, @Nullable List<LongWritable> b) {
+        if (a == null || b == null) {
+            return null;
+        }
+
         int alen = a.size();
         int blen = b.size();
 
@@ -67,14 +91,18 @@ public class HammingDistanceUDF extends UDF {
         for (int j = min; j < max; j++) {
             result += hammingDistance(0L, r.get(j).get());
         }
-        return val(result);
+        return new IntWritable(result);
+    }
+
+    public static int hammingDistance(final int a, final int b) {
+        return Integer.bitCount(a ^ b);
     }
 
     public static int hammingDistance(final long a, final long b) {
         return Long.bitCount(a ^ b);
     }
 
-    public static int hammingDistance(final BigInteger a, final BigInteger b) {
+    public static int hammingDistance(@Nonnull final BigInteger a, @Nonnull final BigInteger b) {
         BigInteger xor = a.xor(b);
         return xor.bitCount();
     }
