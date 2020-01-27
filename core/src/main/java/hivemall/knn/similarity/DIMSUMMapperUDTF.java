@@ -69,8 +69,8 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
     private boolean symmetricOutput;
     private boolean parseFeatureAsInt;
 
-    private Map<Object, Double> colNorms;
-    private Map<Object, Double> colProbs;
+    @Nullable
+    private transient Map<Object, Double> colNorms;
 
     @Override
     protected Options getOptions() {
@@ -136,7 +136,6 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
 
         this.rnd = RandomNumberGeneratorFactory.createPRNG(1001);
         this.colNorms = null;
-        this.colProbs = null;
 
         ArrayList<String> fieldNames = new ArrayList<String>();
         fieldNames.add("j");
@@ -167,7 +166,7 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
 
         // since the 2nd argument (column norms) is consistent,
         // column-related values, `colNorms` and `colProbs`, should be cached
-        if (colNorms == null || colProbs == null) {
+        if (colNorms == null) {
             final int numCols = colNormsOI.getMapSize(args[1]);
 
             if (sqrtGamma == Double.POSITIVE_INFINITY) { // set default value to `gamma` based on `threshold`
@@ -177,7 +176,6 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
             }
 
             this.colNorms = new HashMap<Object, Double>(numCols);
-            this.colProbs = new HashMap<Object, Double>(numCols);
             final Map<Object, Object> m = (Map<Object, Object>) colNormsOI.getMap(args[1]);
             for (Map.Entry<Object, Object> e : m.entrySet()) {
                 Object j = e.getKey();
@@ -193,9 +191,6 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
                 }
 
                 colNorms.put(j, norm);
-
-                double p = Math.min(1.d, sqrtGamma / norm);
-                colProbs.put(j, p);
             }
         }
 
@@ -205,6 +200,8 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
             forwardAsStringFeature(row);
         }
     }
+
+
 
     private void forwardAsIntFeature(@Nonnull Feature[] row) throws HiveException {
         final int length = row.length;
@@ -231,16 +228,24 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
         forwardObjs[1] = kWritable;
         forwardObjs[2] = bWritable;
 
-        for (int ij = 0; ij < length; ij++) {
-            int j = rowScaled[ij].getFeatureIndex();
-            double jVal = rowScaled[ij].getValue();
-            double jProb = Primitives.doubleValue(colProbs.get(j), 0.d);
+        for (int i = 0; i < length; i++) {
+            int j = rowScaled[i].getFeatureIndex();
+            double jVal = rowScaled[i].getValue();
+            double jNorm = Primitives.doubleValue(colNorms.get(j), 0.d);
+            if (jNorm == 0.d) { // avoid zero-division
+                jNorm = 1.d;
+            }
+            double jProb = Math.min(1.d, sqrtGamma / jNorm);
 
             if (jVal != 0.d && rnd.nextDouble() < jProb) {
-                for (int ik = ij + 1; ik < length; ik++) {
+                for (int ik = i + 1; ik < length; ik++) {
                     int k = rowScaled[ik].getFeatureIndex();
                     double kVal = rowScaled[ik].getValue();
-                    double kProb = Primitives.doubleValue(colProbs.get(k), 0.d);
+                    double kNorm = Primitives.doubleValue(colNorms.get(k), 0.d);
+                    if (kNorm == 0.d) { // avoid zero-division
+                        kNorm = 1.d;
+                    }
+                    double kProb = Math.min(1.d, sqrtGamma / kNorm);
 
                     if (kVal != 0.d && rnd.nextDouble() < kProb) {
                         // compute b_jk
@@ -300,13 +305,21 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
         for (int ij = 0; ij < length; ij++) {
             String j = rowScaled[ij].getFeature();
             double jVal = rowScaled[ij].getValue();
-            double jProb = Primitives.doubleValue(colProbs.get(j), 0.d);
+            double jNorm = Primitives.doubleValue(colNorms.get(j), 0.d);
+            if (jNorm == 0.d) { // avoid zero-division
+                jNorm = 1.d;
+            }
+            double jProb = Math.min(1.d, sqrtGamma / jNorm);
 
             if (jVal != 0.d && rnd.nextDouble() < jProb) {
                 for (int ik = ij + 1; ik < length; ik++) {
                     String k = rowScaled[ik].getFeature();
                     double kVal = rowScaled[ik].getValue();
-                    double kProb = Primitives.doubleValue(colProbs.get(j), 0.d);
+                    double kNorm = Primitives.doubleValue(colNorms.get(k), 0.d);
+                    if (kNorm == 0.d) { // avoid zero-division
+                        kNorm = 1.d;
+                    }
+                    double kProb = Math.min(1.d, sqrtGamma / kNorm);
 
                     if (kVal != 0.d && rnd.nextDouble() < kProb) {
                         // compute b_jk
@@ -347,6 +360,5 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
     public void close() throws HiveException {
         this.probes = null;
         this.colNorms = null;
-        this.colProbs = null;
     }
 }
