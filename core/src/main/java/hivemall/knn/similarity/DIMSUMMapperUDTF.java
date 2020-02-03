@@ -65,6 +65,7 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
     private PRNG rnd;
 
     private double threshold;
+    private double omega;
     private double sqrtGamma;
     private boolean symmetricOutput;
     private boolean parseFeatureAsInt;
@@ -77,9 +78,10 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
         Options opts = new Options();
         opts.addOption("th", "threshold", true,
             "Theoretically, similarities above this threshold are estimated [default: 0.5]");
+        opts.addOption("omega", true, "omega value used in gamma [default: 4]");
         opts.addOption("g", "gamma", true,
             "Oversampling parameter; if `gamma` is given, `threshold` will be ignored"
-                    + " [default: 10 * log(numCols) / threshold]");
+                    + " [default: omega * log(numCols) / threshold]");
         opts.addOption("disable_symmetric", "disable_symmetric_output", false,
             "Output only contains (col j, col k) pair; symmetric (col k, col j) pair is omitted");
         opts.addOption("int_feature", "feature_as_integer", false,
@@ -91,6 +93,7 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
     protected CommandLine processOptions(@Nonnull ObjectInspector[] argOIs)
             throws UDFArgumentException {
         double threshold = 0.5d;
+        double omega = 4;
         double gamma = Double.POSITIVE_INFINITY;
         boolean symmetricOutput = true;
         boolean parseFeatureAsInt = false;
@@ -103,6 +106,7 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
             if (threshold < 0.f || threshold >= 1.f) {
                 throw new UDFArgumentException("`threshold` MUST be in range [0,1): " + threshold);
             }
+            omega = Primitives.parseDouble(cl.getOptionValue("omega"), omega);
             gamma = Primitives.parseDouble(cl.getOptionValue("gamma"), gamma);
             if (gamma <= 1.d) {
                 throw new UDFArgumentException("`gamma` MUST be greater than 1: " + gamma);
@@ -112,6 +116,7 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
         }
 
         this.threshold = threshold;
+        this.omega = omega;
         this.sqrtGamma = Math.sqrt(gamma);
         this.symmetricOutput = symmetricOutput;
         this.parseFeatureAsInt = parseFeatureAsInt;
@@ -155,8 +160,8 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
         return ObjectInspectorFactory.getStandardStructObjectInspector(fieldNames, fieldOIs);
     }
 
-    @SuppressWarnings("unchecked")
     @Override
+    @SuppressWarnings("unchecked")
     public void process(Object[] args) throws HiveException {
         Feature[] row = parseFeatures(args[0]);
         if (row == null) {
@@ -171,7 +176,7 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
 
             if (sqrtGamma == Double.POSITIVE_INFINITY) { // set default value to `gamma` based on `threshold`
                 if (threshold > 0.d) { // if `threshold` = 0, `gamma` is INFINITY i.e. always accept <j, k> pairs
-                    this.sqrtGamma = Math.sqrt(10 * Math.log(numCols) / threshold);
+                    this.sqrtGamma = Math.sqrt(omega * Math.log(numCols) / threshold);
                 }
             }
 
@@ -200,8 +205,6 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
             forwardAsStringFeature(row);
         }
     }
-
-
 
     private void forwardAsIntFeature(@Nonnull Feature[] row) throws HiveException {
         final int length = row.length;
@@ -302,6 +305,13 @@ public final class DIMSUMMapperUDTF extends UDTFWithOptions {
         forwardObjs[1] = kWritable;
         forwardObjs[2] = bWritable;
 
+        /*
+         * For all a_ij in row i,
+         *  with probability min(1, sqrt(gamma)/|cj|),
+         *      for all a_ik in row i,
+         *          with probability min(1, sqrt(gamma)/|ck|),
+         *              emit ((j, k) => a_ij * a_ik / (min(sqrt(gamma), |cj|) * min(sqrt(gamma), |ck|)).
+         */
         for (int ij = 0; ij < length; ij++) {
             String j = rowScaled[ij].getFeature();
             double jVal = rowScaled[ij].getValue();
