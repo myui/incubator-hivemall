@@ -249,6 +249,7 @@
 		<module>core</module>
 		<module>nlp</module>
 		<module>xgboost</module>
+		<module>lightgbm</module>		
 		<module>mixserv</module>
 		<module>dist</module>
 		<module>tools</module>
